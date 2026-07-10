@@ -1,55 +1,62 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * CivicPulse AI — Universal API Proxy
+ * CivicPulse AI — Universal Streaming API Proxy
  *
- * All requests to /api/proxy/* from the Next.js frontend are transparently
- * forwarded to the FastAPI backend. This eliminates CORS preflight issues
- * because the browser always talks to the same Vercel origin.
+ * Transparently forwards all /api/proxy/* requests to the FastAPI backend.
+ * Critically, this proxy does NOT buffer — it pipes the ReadableStream body
+ * directly through, so SSE chunks from the Python backend reach the browser
+ * in real-time without any intermediate buffering.
  *
- * Usage from the frontend:
- *   fetch("/api/proxy/api/triage", { method: "POST", body: ... })
- *
- * Maps to:
- *   https://<BACKEND_URL>/api/triage
+ * Vercel note: `export const maxDuration = 60` extends the serverless
+ * function timeout from the default 10s to 60s, which is required for
+ * long-running AI inference streams. Upgrade to Pro plan for 300s max.
  */
+
+// Extend Vercel function timeout for AI streaming responses
+export const maxDuration = 60;
+
+// Tell Next.js this route must run as a dynamic serverless function
+// (not statically prerendered) — required for streaming responses.
+export const dynamic = "force-dynamic";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Strip the /api/proxy prefix so we forward the clean path to FastAPI.
 function buildUpstreamUrl(request: NextRequest): string {
   const { pathname, search } = new URL(request.url);
   const upstreamPath = pathname.replace(/^\/api\/proxy/, "");
   return `${BACKEND_URL}${upstreamPath}${search}`;
 }
 
-// Forward all HTTP methods generically.
 async function handler(request: NextRequest) {
   const upstreamUrl = buildUpstreamUrl(request);
 
-  // Clone headers and strip host so the backend sees its own host.
   const headers = new Headers(request.headers);
   headers.delete("host");
+  // Signal to FastAPI that we accept SSE streams
+  headers.set("Accept", "text/event-stream");
 
   try {
     const upstreamResponse = await fetch(upstreamUrl, {
       method: request.method,
       headers,
-      // Only attach body for methods that carry one.
       body: ["GET", "HEAD"].includes(request.method)
         ? undefined
         : request.body,
-      // Required for streaming request bodies (e.g. large base64 images).
+      // Required for streaming request bodies (large base64 image payloads)
       duplex: "half",
+      // CRITICAL: do NOT set cache: "no-store" here — that converts the
+      // response to a buffered Response, breaking SSE streaming.
     } as RequestInit);
 
-    // Relay the full response (status, headers, body) back to the browser.
     const responseHeaders = new Headers(upstreamResponse.headers);
-    // Ensure CORS headers on the Vercel edge response are not duplicated.
     responseHeaders.delete("access-control-allow-origin");
     responseHeaders.set("access-control-allow-origin", "*");
 
+    // Pipe the upstream ReadableStream body directly to the client response.
+    // Using `new NextResponse(upstreamResponse.body, ...)` correctly passes
+    // the stream through WITHOUT buffering — the key that makes SSE work.
     return new NextResponse(upstreamResponse.body, {
       status: upstreamResponse.status,
       statusText: upstreamResponse.statusText,
@@ -60,14 +67,14 @@ async function handler(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: "Backend unreachable. Please ensure the FastAPI service is running.",
+        error:
+          "Backend unreachable. Please ensure the FastAPI service is running.",
       },
       { status: 503 }
     );
   }
 }
 
-// Export all HTTP method handlers (Next.js App Router requires named exports).
 export const GET = handler;
 export const POST = handler;
 export const PUT = handler;
