@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #050505;
+    color: #ffffff;
+    font-family: var(--font-inter), sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-500 to-purple-500;
+  }
+
+  .glass-card {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 shadow-2xl transition-all duration-300 transform-gpu will-change-transform;
+    backface-visibility: hidden;
+  }
+
+  .glass-card:hover {
+    @apply shadow-[0_0_30px_rgba(139,92,246,0.2)] border-white/20;
+  }
+}
+
+.aurora-blob-1 {
+  position: fixed;
+  top: -10%;
+  right: -5%;
+  width: 50vw;
+  height: 50vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(5, 5, 5, 0) 70%);
+  filter: blur(80px);
+  z-index: -1;
+  pointer-events: none;
+  will-change: filter, transform;
+  contain: layout paint;
+}
+
+.aurora-blob-2 {
+  position: fixed;
+  bottom: -10%;
+  left: -10%;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, rgba(5, 5, 5, 0) 70%);
+  filter: blur(100px);
+  z-index: -1;
+  pointer-events: none;
+  will-change: filter, transform;
+  contain: layout paint;
+}
